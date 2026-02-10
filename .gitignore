@@ -1,0 +1,105 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Build outputs
+dist/
+build/
+lib/
+*.log
+*.tsbuildinfo
+
+# .NET
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+[Tt]est[Rr]esult*/
+*.trx
+
+# Expo / React Native
+mobile/ios/
+mobile/android/
+mobile/.expo/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+*.orig.*
+
+# Firebase
+firebase/functions/lib/
+firebase-debug.log
+.firebase/
+.firebaserc
+GoogleService-Info.plist
+google-services.json
+
+# Python
+.venv/
+venv/
+*.py[cod]
+htmlcov/
+
+# IDE
+.claude/settings.local.json
+.vscode/
+!.vscode/
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Testing
+coverage/
+.nyc_output/
+output/
+
+# Misc
+*.pem
+*.key
+.cache/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage/
+.coverage.*
+.vite/
+
+# Playwright MCP screenshots
+.playwright-mcp/
+
+# Python egg-info
+*.egg-info/
+
+# User secrets
+appsettings.Development.json

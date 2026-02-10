@@ -1,93 +1,250 @@
-# ai-winform-ui
+# Text-to-Code Engine — WinForms (.NET 10) + Roslyn + Local LLM
 
+## Context
 
+Build a WinForms desktop application that accepts natural language input, generates C# code via a local LLM (Ollama), compiles and executes the code in-memory using Roslyn, and displays results. The application prioritizes **data privacy** (all local), **fast iteration** (WinForms for engineers), and **integration with existing .NET systems**.
 
-## Getting started
+The repo is greenfield — only infrastructure files exist (`Directory.Build.props`, `global.json`, `.editorconfig`). Target: .NET 10.0 LTS (SDK 10.0.102).
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+---
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## Solution Structure
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/nwpie/vibe/ai-winform-ui.git
-git branch -M main
-git push -uf origin main
+ai-winform-ui/
+├── Directory.Build.props          (MODIFY — add NoWarn for SK experimental APIs)
+├── global.json                    (existing)
+├── .editorconfig                  (existing)
+├── WinformTTC.sln                 (NEW)
+├── src/
+│   ├── WinformTTC.Core/           (class library — net10.0)
+│   │   ├── WinformTTC.Core.csproj
+│   │   ├── Configuration/
+│   │   │   ├── OllamaOptions.cs
+│   │   │   └── CompilationOptions.cs
+│   │   ├── Models/
+│   │   │   ├── CodeGenerationResult.cs
+│   │   │   ├── CompilationResult.cs
+│   │   │   └── ExecutionResult.cs
+│   │   ├── Services/
+│   │   │   ├── ICodeGenerationService.cs
+│   │   │   ├── ICompilationService.cs
+│   │   │   ├── CodeGenerationService.cs
+│   │   │   ├── CodeExtractor.cs
+│   │   │   └── RoslynCompilationService.cs
+│   │   └── ServiceCollectionExtensions.cs
+│   └── WinformTTC.App/            (WinForms — net10.0-windows)
+│       ├── WinformTTC.App.csproj
+│       ├── Program.cs
+│       ├── appsettings.json
+│       ├── Configuration/
+│       │   └── EditorOptions.cs
+│       ├── ViewModels/
+│       │   └── MainViewModel.cs
+│       ├── Forms/
+│       │   ├── MainForm.cs
+│       │   └── MainForm.Designer.cs
+│       └── Controls/
+│           └── ScintillaConfigurator.cs
+└── tests/                         (future)
 ```
 
-## Integrate with your tools
+**Why two projects?** Core has zero Windows dependencies — reusable in CLI/API/tests. App is a thin UI shell. This is the minimum useful separation without over-engineering.
 
-* [Set up project integrations](https://gitlab.com/nwpie/vibe/ai-winform-ui/-/settings/integrations)
+---
 
-## Collaborate with your team
+## NuGet Packages
 
-* [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+### WinformTTC.Core (`net10.0`)
+| Package | Purpose |
+|---------|---------|
+| `Microsoft.SemanticKernel` | LLM orchestration (Kernel, plugins, chat) |
+| `Microsoft.SemanticKernel.Connectors.Ollama` | Local model connector (prerelease) |
+| `Microsoft.CodeAnalysis.CSharp` | Roslyn C# compilation |
+| `Microsoft.Extensions.Options` | Options pattern for configuration |
+| `Microsoft.Extensions.Logging.Abstractions` | Logging |
 
-## Test and Deploy
+### WinformTTC.App (`net10.0-windows`)
+| Package | Purpose |
+|---------|---------|
+| `CommunityToolkit.Mvvm` | MVVM source generators (ObservableProperty, RelayCommand) |
+| `Scintilla.NET.WinForms` | Code editor with C# syntax highlighting |
+| `Microsoft.Extensions.Hosting` | Generic host (DI + config + logging) |
 
-Use the built-in continuous integration in GitLab.
+---
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+## Key Components
 
-***
+### 1. RoslynCompilationService — `src/WinformTTC.Core/Services/RoslynCompilationService.cs`
 
-# Editing this README
+The safety-critical component. Implements `ICompilationService`.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+- **Compile**: `CSharpSyntaxTree.ParseText` → `CSharpCompilation.Create` → `Emit` to `MemoryStream` → return `byte[]` or diagnostics
+- **Execute**: Load `byte[]` into collectible `AssemblyLoadContext` → find `Main` entry point → redirect `Console.Out` to `StringWriter` → `Task.Run` with timeout → capture output → unload context
+- **References**: Resolved from `TRUSTED_PLATFORM_ASSEMBLIES` (System.Runtime, System.Console, System.Linq, System.Collections, etc.)
+- **Sandbox**: `file sealed class SandboxAssemblyLoadContext : AssemblyLoadContext` with `isCollectible: true`
 
-## Suggestions for a good README
+### 2. CodeGenerationService — `src/WinformTTC.Core/Services/CodeGenerationService.cs`
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+Uses Semantic Kernel's `IChatCompletionService` via the Ollama connector.
 
-## Name
-Choose a self-explaining name for your project.
+- **System prompt**: Instructs LLM to return only compilable C# with `Main` entry point
+- **Streaming**: `IAsyncEnumerable<string>` via `GetStreamingChatMessageContentsAsync` for progressive UI display
+- **Code extraction**: `CodeExtractor.ExtractCSharpCode()` strips markdown fences from LLM output
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+### 3. MainViewModel — `src/WinformTTC.App/ViewModels/MainViewModel.cs`
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Orchestrates UI state via CommunityToolkit.Mvvm source generators.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- **Properties**: `PromptText`, `GeneratedCode`, `OutputText`, `StatusMessage`, `IsProcessing`, `Diagnostics`
+- **Commands**: `GenerateCodeCommand`, `CompileAndRunCommand`, `StopCommand` (with CanExecute guards)
+- **Cancellation**: Single `CancellationTokenSource` managed per operation
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### 4. MainForm — `src/WinformTTC.App/Forms/MainForm.cs`
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+WinForms UI with no business logic. Binds to ViewModel via `PropertyChanged` + `InvokeAsync`.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+---
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## UI Layout
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```
++------------------------------------------------------------------+
+| [ToolStrip]  [Generate] [Compile & Run] [Stop]   [Model: ____v]  |
++------------------------------------------------------------------+
+| Natural Language Input (TextBox, Multiline, ~3 lines)             |
++==================================================================+
+|                                                                   |
+|  Generated Code (ScintillaNET)                                    |
+|  - C# syntax highlighting, line numbers, editable                 |
+|                                                                   |
++==================================================================+
+| Output / Results (RichTextBox)                                    |
+| - stdout, compilation errors (red), status messages               |
++------------------------------------------------------------------+
+| [StatusStrip]  Ready  |  ████░░  |  Model: qwen2.5-coder:7b     |
++------------------------------------------------------------------+
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+Layout: `SplitContainer` (horizontal) nested — outer splits input vs rest, inner splits editor vs output. All controls use `Dock: Fill` for resizability.
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+---
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+## Data Flow
 
-## License
-For open source projects, say how it is licensed.
+```
+User types prompt → [Generate] →
+  ViewModel.GenerateCodeAsync():
+    1. IsProcessing = true, create CancellationTokenSource
+    2. CodeGenerationService.GenerateCodeStreamingAsync(prompt, ct)
+    3. Stream chunks → update GeneratedCode → ScintillaNET refreshes
+    4. IsProcessing = false
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+User reviews/edits code → [Compile & Run] →
+  ViewModel.CompileAndRunAsync():
+    1. IsProcessing = true
+    2. CompilationService.Compile(code)
+    3. If errors → display diagnostics + highlight error lines
+    4. CompilationService.ExecuteAsync(result, ct)
+    5. OutputText = stdout or error message
+    6. IsProcessing = false
+
+[Stop] → CancellationTokenSource.Cancel()
+```
+
+**Threading**: All Semantic Kernel / Roslyn work runs on background threads. UI updates via `PropertyChanged` → `Control.InvokeAsync` marshalling. `IProgress<string>` for streaming updates.
+
+---
+
+## Error Handling
+
+| Scenario | Handling |
+|----------|----------|
+| Ollama not running | `HttpRequestException` → friendly message: "Cannot connect to Ollama" |
+| Model not found | Surface Ollama error → suggest `ollama list` |
+| Generation timeout | `CancellationTokenSource.CreateLinkedTokenSource` + `CancelAfter(120s)` |
+| Compilation errors | `EmitResult.Diagnostics` → red indicators in ScintillaNET + error list |
+| Runtime exception | `TargetInvocationException` → display `InnerException.Message` + stack trace |
+| Execution timeout | `Task.WaitAsync(30s)` → "Execution timed out" |
+| User cancellation | `OperationCanceledException` → StatusMessage = "Cancelled" |
+
+---
+
+## Configuration — `appsettings.json`
+
+```json
+{
+  "Ollama": {
+    "Endpoint": "http://localhost:11434",
+    "ModelId": "qwen2.5-coder:7b-instruct-q5_K_M",
+    "TimeoutSeconds": 120
+  },
+  "Compilation": {
+    "ExecutionTimeoutSeconds": 30,
+    "AllowUnsafeCode": false
+  },
+  "Editor": {
+    "FontFamily": "Consolas",
+    "FontSize": 11
+  }
+}
+```
+
+Options pattern: `OllamaOptions`, `CompilationOptions`, `EditorOptions` POCOs bound via `IOptions<T>`.
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `Directory.Build.props` | Add `<NoWarn>$(NoWarn);SKEXP0001;SKEXP0010;SKEXP0070</NoWarn>` for SK experimental APIs |
+
+---
+
+## Implementation Phases
+
+### Phase 1: Scaffolding
+- Modify `Directory.Build.props` (add NoWarn)
+- Create `WinformTTC.sln`, both `.csproj` files, `Program.cs`
+- Verify `dotnet build` succeeds
+
+### Phase 2: Models & Interfaces
+- All records in `Models/` (CodeGenerationResult, CompilationResult, ExecutionResult)
+- Service interfaces (`ICodeGenerationService`, `ICompilationService`)
+- Options classes (`OllamaOptions`, `CompilationOptions`)
+
+### Phase 3: Roslyn Compilation Service
+- `RoslynCompilationService.Compile()` with reference resolution
+- `SandboxAssemblyLoadContext` (collectible)
+- `ExecuteAsync()` with Console.Out redirect + timeout
+- Test with hardcoded C# string
+
+### Phase 4: Code Generation Service
+- `CodeExtractor` (strip markdown fences)
+- `CodeGenerationService` (Semantic Kernel + Ollama)
+- `ServiceCollectionExtensions.AddWinformTtcCore()`
+
+### Phase 5: WinForms UI
+- `MainViewModel` (properties, commands, async flow)
+- `ScintillaConfigurator` (C# highlighting, line numbers, error indicators)
+- `MainForm` layout (SplitContainers, toolbar, status bar)
+- ViewModel ↔ Form binding via PropertyChanged + InvokeAsync
+- `appsettings.json` + DI wiring in `Program.cs`
+
+### Phase 6: Integration & Polish
+- End-to-end test: prompt → generate → compile → run → output
+- Error line highlighting in editor
+- Streaming code display
+- Progress bar in status strip
+
+---
+
+## Verification
+
+1. **Build**: `dotnet build WinformTTC.sln` — zero errors, zero warnings
+2. **Roslyn standalone**: Hardcode a C# string, verify compile + execute returns expected output
+3. **Ollama connectivity**: Run `ollama serve` + `ollama pull qwen2.5-coder:7b-instruct-q5_K_M`, verify CodeGenerationService returns valid C#
+4. **End-to-end**: Type "write a program that prints fibonacci numbers up to 100" → Generate → code appears in editor → Compile & Run → fibonacci output appears
+5. **Error paths**: Submit invalid prompt, verify graceful error display; test Stop button mid-generation; test without Ollama running
+6. **Memory**: Run multiple generate/compile/run cycles, verify no assembly leak (collectible ALC unloads)
