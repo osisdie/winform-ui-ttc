@@ -82,6 +82,9 @@ Thumbs.db
 coverage/
 .nyc_output/
 output/
+screenshots/
+logs/
+reports/
 
 # Misc
 *.pem

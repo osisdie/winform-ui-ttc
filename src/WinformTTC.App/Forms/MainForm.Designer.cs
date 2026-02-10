@@ -45,8 +45,11 @@ partial class MainForm
         toolStrip.Dock = DockStyle.Top;
 
         generateButton.Text = "Generate";
+        generateButton.AccessibleName = "Generate";
         compileButton.Text = "Compile & Run";
+        compileButton.AccessibleName = "Compile & Run";
         stopButton.Text = "Stop";
+        stopButton.AccessibleName = "Stop";
 
         modelLabel.Text = "Model:";
         modelTextBox.ReadOnly = true;
@@ -66,6 +69,7 @@ partial class MainForm
 
         promptTextBox.Dock = DockStyle.Fill;
         promptTextBox.Multiline = true;
+        promptTextBox.AccessibleName = "Prompt Input";
         promptTextBox.ScrollBars = ScrollBars.Vertical;
         promptTextBox.Font = new System.Drawing.Font("Consolas", 10F);
 
@@ -74,7 +78,9 @@ partial class MainForm
         innerSplit.SplitterDistance = 320;
 
         codeEditor.Dock = DockStyle.Fill;
+        codeEditor.AccessibleName = "Code Editor";
         outputTextBox.Dock = DockStyle.Fill;
+        outputTextBox.AccessibleName = "Output Display";
         outputTextBox.ReadOnly = true;
         outputTextBox.BackColor = System.Drawing.SystemColors.Window;
         outputTextBox.Font = new System.Drawing.Font("Consolas", 10F);
