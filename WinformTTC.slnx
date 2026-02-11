@@ -2,5 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/WinformTTC.App/WinformTTC.App.csproj" />
     <Project Path="src/WinformTTC.Core/WinformTTC.Core.csproj" />
+    <Project Path="src/WinformTTC.Inspector/WinformTTC.Inspector.csproj" />
+    <Project Path="src/WinformTTC.Client/WinformTTC.Client.csproj" />
   </Folder>
 </Solution>
